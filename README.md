@@ -1,2 +1,3 @@
 # mesmer
-Delightful static site generator based on React and esbuild
+
+Mesmer is a delightful static site generator based on React and esbuild.
