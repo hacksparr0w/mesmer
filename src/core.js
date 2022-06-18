@@ -3,13 +3,14 @@ import Path from "path";
 
 import getCommonPath from "common-path";
 import Esbuild from "esbuild";
-import Glob from "glob";
 import React from "react";
 import ReactDom from "react-dom/server";
 
-import { glob, hash } from "./utility.js";
+import { globAll, hash } from "./utility.js";
 
-const CONFIG_FILE_NAME = "esblog.json";
+const CONFIG_FILE_NAME = "mesmer.json";
+const CONFIG_FILE_PATTERN = /mesmer\.json$/;
+const METADATA_FILE_NAME = "metadata.json";
 const BUNDLE_FILE_NAME = "bundle.mjs";
 const BUILD_DIR_NAME = "build";
 
@@ -21,51 +22,43 @@ const getBuildPath = projectPath => (
   Path.join(projectPath, BUILD_DIR_NAME)
 );
 
-const getBundlePath = projectPath => (
-  Path.join(getBuildPath(projectPath), BUNDLE_FILE_NAME)
+const getBundlePath = buildPath => (
+  Path.join(buildPath, BUNDLE_FILE_NAME)
 );
 
 const getConfigPath = projectPath => (
   Path.join(projectPath, CONFIG_FILE_NAME)
 );
 
-const generateModuleCode = pages => {
-  let buffer = "";
+const getMetadataPath = buildPath => (
+  Path.join(buildPath, METADATA_FILE_NAME)
+);
+
+const generateBundleCode = pages => {
+  const lines = [];
 
   for (const [path, exportName] of pages) {
-    buffer += `export { default as ${exportName} } from "${path}";\n`;
+    lines.push(`export { default as ${exportName} } from "${path}";`);
   }
 
-  buffer += `export { default as React } from "react";\n`;
-  buffer += `export { default as ReactDom } from "react-dom";\n`;
+  lines.push(`export { default as React } from "react";`);
+  lines.push(`export { default as ReactDom } from "react-dom";`);
 
-  return buffer;
+  const contents = lines.join("\n");
+
+  return contents;
 };
 
-const resolvePagePaths = async pagePatterns => {
-  const paths = [];
-
-  for (const pattern of pagePatterns) {
-    if (!Glob.hasMagic(pattern)) {
-      paths.push(pattern);
-      continue;
-    }
-
-    const matches = await glob(pattern);
-    paths.push(...matches);
-  }
-
-  return paths;
-};
-
-const loadConfig = async configPath => {
+const loadConfig = async (projectPath, configPath) => {
   const contents = await Fs.readFile(configPath, "utf-8");
   const data = JSON.parse(contents);
-  const pagePaths = await resolvePagePaths(data.pages ?? []);
+  const pagePaths = await globAll(data.pages ?? [], projectPath);
   const pages = pagePaths
     .map(path => [path, generateExportName(path)]);
 
-  return { pages };
+  const metadata = data.metadata ?? {};
+
+  return { pages, metadata };
 };
 
 const plugin = projectPath => ({
@@ -73,46 +66,67 @@ const plugin = projectPath => ({
   setup: build => {
     let config;
 
-    build.onLoad({ filter: /esblog\.json$/ }, async args => {
-      config = await loadConfig(args.path);
+    build.onLoad({ filter: CONFIG_FILE_PATTERN }, async args => {
+      config = await loadConfig(projectPath, args.path);
       const { pages } = config;
 
       return {
         loader: "js",
-        contents: generateModuleCode(pages)
+        contents: generateBundleCode(pages)
       };
     });
 
-    build.onEnd(async result => {
-      if (result.errors.length !== 0) {
+    build.onEnd(async ({ errors }) => {
+      if (errors.length !== 0) {
         return;
       }
 
-      const { pages } = config;
+      const { pages, metadata: siteMetadata } = config;
       const buildPath = getBuildPath(projectPath);
-      const bundlePath = getBundlePath(projectPath);
+      const bundlePath = getBundlePath(buildPath);
+      const metadataPath = getMetadataPath(buildPath);
       const { parsedPaths: commonPaths } = getCommonPath(
         pages.map(([path, _]) => path)
       );
 
-      const options = pages.map(
-        ([, exportName], index) => {
-          const { subdir, namePart } = commonPaths[index];
-
-          return [
-            exportName,
-            Path.join(buildPath, subdir, `${namePart}.html`)
-          ];
-        }
-      );
-
       const bundle = await import(bundlePath);
+      const pagesMetadata = {};
+      const candidates = [];
 
-      for (const [exportName, outputPath] of options) {
-        const element = React.createElement(bundle[exportName]);
-        const markup = ReactDom.renderToString(element);
+      for (let index = 0; index < pages.length; index += 1) {
+        const [, exportName] = pages[index];
+        const { subdir, namePart } = commonPaths[index];
+        const relativeDocumentPath = Path.join(
+          `/${subdir}`,
+          `${namePart}.html`
+        );
 
-        await Fs.writeFile(outputPath, markup, "utf-8");
+        const absoluteDocumentPath = Path.join(
+          buildPath,
+          relativeDocumentPath
+        );
+
+        const component = bundle[exportName];
+        const pageMetadata = component.metadata ?? {};
+
+        pagesMetadata[relativeDocumentPath] = pageMetadata;
+        candidates.push([absoluteDocumentPath, component, pageMetadata]);
+      }
+
+      const metadata = { site: siteMetadata, pages: pagesMetadata };
+      const metadataContents = JSON.stringify(metadata);
+
+      await Fs.writeFile(metadataPath, metadataContents, "utf-8");
+
+      for (const [documentPath, component, pageMetadata] of candidates) {
+        const element = React.createElement(
+          component,
+          { metadata: { ...metadata, page: pageMetadata } }
+        );
+
+        const htmlContents = ReactDom.renderToString(element);
+
+        await Fs.writeFile(documentPath, htmlContents, "utf-8");
       }
     });
   }
@@ -120,7 +134,8 @@ const plugin = projectPath => ({
 
 const build = async projectPath => {
   const configPath = getConfigPath(projectPath);
-  const bundlePath = getBundlePath(projectPath);
+  const buildPath = getBuildPath(projectPath);
+  const bundlePath = getBundlePath(buildPath);
 
   await Esbuild.build({
     entryPoints: [configPath],
