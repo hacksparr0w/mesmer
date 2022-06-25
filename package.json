@@ -2,7 +2,9 @@
   "name": "mesmer",
   "type": "module",
   "version": "1.0.0",
-  "description": "Delightful static site generator based on React and esbuild",
+  "description": "Delightful static site generator based on React",
+  "main": "./src/index.js",
+  "bin": "./src/cli.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hacksparr0w/mesmer.git"
@@ -22,9 +24,12 @@
   },
   "homepage": "https://github.com/hacksparr0w/mesmer#readme",
   "dependencies": {
+    "@hyrious/esbuild-plugin-commonjs": "^0.2.1",
     "common-path": "^1.0.1",
     "esbuild": "^0.14.43",
-    "glob": "^8.0.3",
+    "glob": "^8.0.3"
+  },
+  "peerDependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   }

@@ -1,148 +1,184 @@
-import { promises as Fs } from "fs";
-import Path from "path";
+import Path from "node:path";
 
-import getCommonPath from "common-path";
+import { commonjs as EsmPlugin } from "@hyrious/esbuild-plugin-commonjs";
+import commonPath from "common-path";
 import Esbuild from "esbuild";
-import React from "react";
-import ReactDom from "react-dom/server";
 
-import { globAll, hash } from "./utility.js";
+import {
+  globAll,
+  hash,
+  readJsonFile,
+  writeTextFile,
+  zip
+} from "./utility.js";
 
-const CONFIG_FILE_NAME = "mesmer.json";
-const CONFIG_FILE_PATTERN = /mesmer\.json$/;
-const METADATA_FILE_NAME = "metadata.json";
-const BUNDLE_FILE_NAME = "bundle.mjs";
 const BUILD_DIR_NAME = "build";
+const CONFIG_FILE_NAME = "mesmer.json";
+const CONFIG_FILE_PATTERN = /mesmer.json$/;
+const MAIN_BUNDLE_FILE_NAME = "main.mjs";
+const REACT_BUNDLE_FILE_NAME = "react.mjs";
+const REACT_DOM_CLIENT_BUNDLE_FILE_NAME = "react-dom-client.mjs";
+const REACT_DOM_SERVER_BUNDLE_FILE_NAME = "react-dom-server.mjs";
 
-const generateExportName = pagePath => (
-  Path.parse(pagePath).name + hash(pagePath)
+const REACT_DOM_CLIENT_MODULE_REL_PATH = "./node_modules/react-dom/client.js";
+const REACT_DOM_SERVER_MODULE_REL_PATH = "./node_modules/react-dom/server.js";
+const REACT_DOM_MODULES_PATTERN = /react-dom/;
+const REACT_MODULE_REL_PATH = "./node_modules/react/index.js";
+const REACT_MODULE_PATTERN = /^react$/;
+
+const generatePageExportName = path => (
+  Path.parse(path).name + hash(path)
 );
 
-const getBuildPath = projectPath => (
-  Path.join(projectPath, BUILD_DIR_NAME)
-);
-
-const getBundlePath = buildPath => (
-  Path.join(buildPath, BUNDLE_FILE_NAME)
-);
-
-const getConfigPath = projectPath => (
-  Path.join(projectPath, CONFIG_FILE_NAME)
-);
-
-const getMetadataPath = buildPath => (
-  Path.join(buildPath, METADATA_FILE_NAME)
-);
-
-const generateBundleCode = pages => {
+const generateMainModuleCode = pages => {
   const lines = [];
 
-  for (const [path, exportName] of pages) {
+  for (const { path, exportName } of pages) {
     lines.push(`export { default as ${exportName} } from "${path}";`);
   }
 
-  lines.push(`export { default as React } from "react";`);
-  lines.push(`export { default as ReactDom } from "react-dom";`);
+  const code = lines.join("\n");
 
-  const contents = lines.join("\n");
-
-  return contents;
+  return code;
 };
 
-const loadConfig = async (projectPath, configPath) => {
-  const contents = await Fs.readFile(configPath, "utf-8");
-  const data = JSON.parse(contents);
-  const pagePaths = await globAll(data.pages ?? [], projectPath);
-  const pages = pagePaths
-    .map(path => [path, generateExportName(path)]);
+const expandConfig = async (config, projectPath) => {
+  const pagePaths = await globAll(config.pages, projectPath);
+  const pagePathsWithExportNames = pagePaths.map(path => ({
+    path,
+    exportName: generatePageExportName(path)
+  }));
 
-  const metadata = data.metadata ?? {};
+  const metadata = config.metadata ?? {};
 
-  return { pages, metadata };
+  return {
+    ...config,
+    metadata,
+    pages: pagePathsWithExportNames
+  };
 };
 
-const plugin = projectPath => ({
+const buildPages = async (projectPath, config) => {
+  const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
+  const mainBundlePath = Path.join(buildPath, MAIN_BUNDLE_FILE_NAME);
+  const reactBundlePath = Path.join(buildPath, REACT_BUNDLE_FILE_NAME);
+  const reactDomServerBundlePath = Path.join(
+    buildPath,
+    REACT_DOM_SERVER_BUNDLE_FILE_NAME
+  );
+
+  const Main = await import(mainBundlePath);
+  const { default: React } = await import(reactBundlePath);
+  const { default: ReactDomServer } = await import(reactDomServerBundlePath);
+
+  const { pages, metadata: projectMetadata } = config;
+  const { parsedPaths: pageCommonPaths } = commonPath(pages, "path");
+
+  const candidates = zip(pages, pageCommonPaths).map(page => {
+    const [{ exportName }, { subPart, namePart }] = page;
+    const pageRelPath = "/" + Path.join(subPart, `${namePart}.html`);
+    const pageBuildPath = Path.join(buildPath, pageRelPath);
+    const component = Main[exportName];
+    const metadata = component.metadata ?? {};
+
+    return {
+      pageRelPath,
+      pageBuildPath,
+      component,
+      metadata
+    };
+  });
+
+  const pagesMetadata = Object.fromEntries(
+    candidates.map(({ pageRelPath, metadata }) => [pageRelPath, metadata])
+  );
+
+  const appMetadata = { pages: pagesMetadata, project: projectMetadata };
+
+  return Promise.all(candidates.map(candidate => {
+    const { pageBuildPath, component, metadata: pageMetadata } = candidate;
+    const metadata = { ...appMetadata, page: pageMetadata };
+    const element = React.createElement(component, { metadata });
+    const contents = ReactDomServer.renderToString(element);
+
+    return writeTextFile(pageBuildPath, contents);
+  }));
+};
+
+const MesmerPlugin = projectPath => ({
   name: "mesmer",
   setup: build => {
     let config;
 
-    build.onLoad({ filter: CONFIG_FILE_PATTERN }, async args => {
-      config = await loadConfig(projectPath, args.path);
+    build.onLoad({ filter: CONFIG_FILE_PATTERN }, async ({ path }) => {
+      config = await readJsonFile(path);
+      config = await expandConfig(config, projectPath);
+
       const { pages } = config;
+      const contents = generateMainModuleCode(pages);
 
       return {
-        loader: "js",
-        contents: generateBundleCode(pages)
+        contents,
+        loader: "js"
       };
     });
 
-    build.onEnd(async ({ errors }) => {
+    build.onResolve({ filter: REACT_MODULE_PATTERN }, () => ({
+      path: `./${REACT_BUNDLE_FILE_NAME}`,
+      external: true
+    }));
+
+    build.onEnd(({ errors }) => {
       if (errors.length !== 0) {
         return;
       }
 
-      const { pages, metadata: siteMetadata } = config;
-      const buildPath = getBuildPath(projectPath);
-      const bundlePath = getBundlePath(buildPath);
-      const metadataPath = getMetadataPath(buildPath);
-      const { parsedPaths: commonPaths } = getCommonPath(
-        pages.map(([path, _]) => path)
-      );
-
-      const bundle = await import(bundlePath);
-      const pagesMetadata = {};
-      const candidates = [];
-
-      for (let index = 0; index < pages.length; index += 1) {
-        const [, exportName] = pages[index];
-        const { subdir, namePart } = commonPaths[index];
-        const relativeDocumentPath = Path.join(
-          `/${subdir}`,
-          `${namePart}.html`
-        );
-
-        const absoluteDocumentPath = Path.join(
-          buildPath,
-          relativeDocumentPath
-        );
-
-        const component = bundle[exportName];
-        const pageMetadata = component.metadata ?? {};
-
-        pagesMetadata[relativeDocumentPath] = pageMetadata;
-        candidates.push([absoluteDocumentPath, component, pageMetadata]);
-      }
-
-      const metadata = { site: siteMetadata, pages: pagesMetadata };
-      const metadataContents = JSON.stringify(metadata);
-
-      await Fs.writeFile(metadataPath, metadataContents, "utf-8");
-
-      for (const [documentPath, component, pageMetadata] of candidates) {
-        const element = React.createElement(
-          component,
-          { metadata: { ...metadata, page: pageMetadata } }
-        );
-
-        const htmlContents = ReactDom.renderToString(element);
-
-        await Fs.writeFile(documentPath, htmlContents, "utf-8");
-      }
+      return buildPages(projectPath, config);
     });
   }
 });
 
 const build = async projectPath => {
-  const configPath = getConfigPath(projectPath);
-  const buildPath = getBuildPath(projectPath);
-  const bundlePath = getBundlePath(buildPath);
+  const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
+  const configPath = Path.join(projectPath, CONFIG_FILE_NAME);
 
-  await Esbuild.build({
-    entryPoints: [configPath],
-    outfile: bundlePath,
-    format: "esm",
+  const reactModulePath = Path.join(projectPath, REACT_MODULE_REL_PATH);
+  const reactDomClientModulePath = Path.join(
+    projectPath,
+    REACT_DOM_CLIENT_MODULE_REL_PATH
+  );
+
+  const reactDomServerModulePath = Path.join(
+    projectPath,
+    REACT_DOM_SERVER_MODULE_REL_PATH
+  );
+
+  const { name: mainBundlePath } = Path.parse(MAIN_BUNDLE_FILE_NAME);
+  const { name: reactBundlePath } = Path.parse(REACT_BUNDLE_FILE_NAME);
+  const { name: reactDomClientBundlePath } = Path.parse(
+    REACT_DOM_CLIENT_BUNDLE_FILE_NAME
+  );
+
+  const { name: reactDomServerBundlePath } = Path.parse(
+    REACT_DOM_SERVER_BUNDLE_FILE_NAME
+  );
+
+  return Esbuild.build({
+    entryPoints: {
+      [mainBundlePath]: configPath,
+      [reactBundlePath]: reactModulePath,
+      [reactDomClientBundlePath]: reactDomClientModulePath,
+      [reactDomServerBundlePath]: reactDomServerModulePath
+    },
+    outdir: buildPath,
     bundle: true,
-    plugins: [plugin(projectPath)]
+    format: "esm",
+    outExtension: { ".js": ".mjs" },
+    external: ["stream", "util"],
+    plugins: [
+      MesmerPlugin(projectPath),
+      EsmPlugin({ filter: REACT_DOM_MODULES_PATTERN })
+    ]
   });
 };
 
