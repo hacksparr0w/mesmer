@@ -25,8 +25,8 @@ const HtmlDocument = (Head = DefaultHead) => Component => {
           (async () => {
             let { pathname } = location;
 
-            if (pathname == "/") {
-              pathname = "/index.html"
+            if (pathname.endsWith("/")) {
+              pathname += "index.html";
             }
 
             const response = await fetch("./metadata.json");
