@@ -1,6 +1,7 @@
 import Path from "node:path";
 
 import { commonjs as EsmPlugin } from "@hyrious/esbuild-plugin-commonjs";
+import MdxPlugin from "@mdx-js/esbuild";
 import commonPath from "common-path";
 import Esbuild from "esbuild";
 
@@ -181,6 +182,7 @@ const build = async projectPath => {
     outExtension: { ".js": ".mjs" },
     external: ["stream", "util"],
     plugins: [
+      MdxPlugin(),
       MesmerPlugin(projectPath),
       EsmPlugin({ filter: REACT_DOM_MODULES_PATTERN })
     ]

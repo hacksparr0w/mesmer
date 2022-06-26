@@ -1,7 +1,7 @@
 {
   "name": "mesmer",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Delightful static site generator based on React",
   "bin": "./build/cli.js",
   "scripts": {
@@ -30,6 +30,7 @@
   "homepage": "https://github.com/hacksparr0w/mesmer#readme",
   "dependencies": {
     "@hyrious/esbuild-plugin-commonjs": "^0.2.1",
+    "@mdx-js/esbuild": "^2.1.2",
     "common-path": "^1.0.1",
     "glob": "^8.0.3"
   },
