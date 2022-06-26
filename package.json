@@ -3,13 +3,10 @@
   "type": "module",
   "version": "0.0.1",
   "description": "Delightful static site generator based on React",
-  "bin": "./build/cli.js",
-  "scripts": {
-    "build": "node ./build.js"
-  },
+  "bin": "./packages/mesmer/main.js",
   "exports": {
-    ".": "./build/index.js",
-    "./component": "./build/component.js"
+    ".": "./packages/mesmer/index.js",
+    "./component": "./packages/mesmer-component/index.jsx"
   },
   "repository": {
     "type": "git",
@@ -37,8 +34,5 @@
   "peerDependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.14.47"
   }
 }
