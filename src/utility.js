@@ -1,5 +1,6 @@
 import Crypto from "node:crypto";
 import Fs from "node:fs/promises";
+import Process from "node:process";
 
 import Glob from "glob";
 
@@ -9,16 +10,20 @@ const flatten = array => (
   array.reduce((accumulator, value) => [...accumulator, ...value], [])
 );
 
-const glob = (pattern, parentPath = undefined) => new Promise((resolve, reject) => {
-  Glob.glob(pattern, { cwd: parentPath }, (error, matches) => {
-    if (error) {
-      reject(error);
-      return;
-    }
+const glob = (pattern, parentPath = undefined) => (
+  new Promise((resolve, reject) => {
+    const cwd = parentPath ?? Process.cwd();
 
-    resolve(matches);
-  });
-});
+    Glob.glob(pattern, { cwd }, (error, matches) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(matches);
+    });
+  })
+);
 
 const globAll = async (patterns, parentPath = undefined) => {
   const result = await Promise.all(
@@ -43,8 +48,12 @@ const readJsonFile = async (path, encoding = undefined) => {
   return data;
 };
 
-const writeTextFile = async (path, contents, encoding = DEFAULT_ENCODING) => (
+const writeTextFile = (path, contents, encoding = DEFAULT_ENCODING) => (
   Fs.writeFile(path, contents, encoding)
+);
+
+const writeJsonFile = (path, data, encoding = undefined) => (
+  writeTextFile(path, JSON.stringify(data, null, 2), encoding)
 );
 
 const zip = (...arrays) => {
@@ -65,6 +74,7 @@ export {
   hash,
   readTextFile,
   readJsonFile,
+  writeJsonFile,
   writeTextFile,
   zip
 };

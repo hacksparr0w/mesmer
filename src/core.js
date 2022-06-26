@@ -8,14 +8,16 @@ import {
   globAll,
   hash,
   readJsonFile,
+  writeJsonFile,
   writeTextFile,
   zip
 } from "./utility.js";
 
+const APP_BUNDLE_FILE_NAME = "app.mjs";
+const APP_METADATA_FILE_NAME = "metadata.json";
 const BUILD_DIR_NAME = "build";
 const CONFIG_FILE_NAME = "mesmer.json";
 const CONFIG_FILE_PATTERN = /mesmer.json$/;
-const MAIN_BUNDLE_FILE_NAME = "main.mjs";
 const REACT_BUNDLE_FILE_NAME = "react.mjs";
 const REACT_DOM_CLIENT_BUNDLE_FILE_NAME = "react-dom-client.mjs";
 const REACT_DOM_SERVER_BUNDLE_FILE_NAME = "react-dom-server.mjs";
@@ -30,7 +32,7 @@ const generatePageExportName = path => (
   Path.parse(path).name + hash(path)
 );
 
-const generateMainModuleCode = pages => {
+const generateAppModuleCode = pages => {
   const lines = [];
 
   for (const { path, exportName } of pages) {
@@ -60,14 +62,15 @@ const expandConfig = async (config, projectPath) => {
 
 const buildPages = async (projectPath, config) => {
   const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
-  const mainBundlePath = Path.join(buildPath, MAIN_BUNDLE_FILE_NAME);
+  const appMetadataPath = Path.join(buildPath, APP_METADATA_FILE_NAME);
+  const appBundlePath = Path.join(buildPath, APP_BUNDLE_FILE_NAME);
   const reactBundlePath = Path.join(buildPath, REACT_BUNDLE_FILE_NAME);
   const reactDomServerBundlePath = Path.join(
     buildPath,
     REACT_DOM_SERVER_BUNDLE_FILE_NAME
   );
 
-  const Main = await import(mainBundlePath);
+  const App = await import(appBundlePath);
   const { default: React } = await import(reactBundlePath);
   const { default: ReactDomServer } = await import(reactDomServerBundlePath);
 
@@ -78,8 +81,8 @@ const buildPages = async (projectPath, config) => {
     const [{ exportName }, { subPart, namePart }] = page;
     const pageRelPath = "/" + Path.join(subPart, `${namePart}.html`);
     const pageBuildPath = Path.join(buildPath, pageRelPath);
-    const component = Main[exportName];
-    const metadata = component.metadata ?? {};
+    const component = App[exportName];
+    const metadata = Object.assign({}, component.metadata, { exportName });
 
     return {
       pageRelPath,
@@ -94,6 +97,8 @@ const buildPages = async (projectPath, config) => {
   );
 
   const appMetadata = { pages: pagesMetadata, project: projectMetadata };
+
+  await writeJsonFile(appMetadataPath, appMetadata);
 
   return Promise.all(candidates.map(candidate => {
     const { pageBuildPath, component, metadata: pageMetadata } = candidate;
@@ -115,7 +120,7 @@ const MesmerPlugin = projectPath => ({
       config = await expandConfig(config, projectPath);
 
       const { pages } = config;
-      const contents = generateMainModuleCode(pages);
+      const contents = generateAppModuleCode(pages);
 
       return {
         contents,
@@ -153,7 +158,7 @@ const build = async projectPath => {
     REACT_DOM_SERVER_MODULE_REL_PATH
   );
 
-  const { name: mainBundlePath } = Path.parse(MAIN_BUNDLE_FILE_NAME);
+  const { name: appBundlePath } = Path.parse(APP_BUNDLE_FILE_NAME);
   const { name: reactBundlePath } = Path.parse(REACT_BUNDLE_FILE_NAME);
   const { name: reactDomClientBundlePath } = Path.parse(
     REACT_DOM_CLIENT_BUNDLE_FILE_NAME
@@ -165,7 +170,7 @@ const build = async projectPath => {
 
   return Esbuild.build({
     entryPoints: {
-      [mainBundlePath]: configPath,
+      [appBundlePath]: configPath,
       [reactBundlePath]: reactModulePath,
       [reactDomClientBundlePath]: reactDomClientModulePath,
       [reactDomServerBundlePath]: reactDomServerModulePath
