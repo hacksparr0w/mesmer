@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="160" src="https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/160/twitter/322/butterfly_1f98b.png" />
+  <img width="180" src="https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/1f98b.svg" />
 </p>
 
 <h1 align="center">Mesmer</h1>
