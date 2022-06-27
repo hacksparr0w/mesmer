@@ -1,0 +1,8 @@
+{
+  "metadata": {
+    "url": "localhost:8080"
+  },
+  "pages": [
+    "./src/page/*.jsx"
+  ]
+}
