@@ -16,7 +16,15 @@ import {
 
 const BUILD_DIR_NAME = "build";
 const CONFIG_FILE_NAME = "mesmer.json";
+const CONFIG_FILE_PATTERN = /mesmer.json$/;
 const CLIENT_BUNDLE_FILE_NAME = "mesmer-client.js";
+const DEFAULT_LOADERS = {
+  ".png": "file",
+  ".jpg": "file",
+  ".svg": "file",
+  ".css": "file"
+};
+
 const SERVER_BUNDLE_FILE_NAME = "mesmer-server.js";
 const METADATA_FILE_NAME = "metadata.json";
 
@@ -198,7 +206,12 @@ const expandConfig = async (config, projectPath) => {
   };
 };
 
-const MesmerPlugin = (projectPath) => ({
+const MesmerPluginMode = {
+  CLIENT: "CLIENT",
+  SERVER: "SERVER"
+};
+
+const MesmerPlugin = (projectPath, mode) => ({
   name: "mesmer",
   setup: async build => {
     const configPath = Path.join(projectPath, CONFIG_FILE_NAME);
@@ -207,39 +220,21 @@ const MesmerPlugin = (projectPath) => ({
       projectPath
     );
 
-    build.onResolve({ filter: /^mesmer-client$/ }, () => ({
-      namespace: "mesmer",
-      path: "mesmer-client"
-    }));
-
-    build.onResolve({ filter: /^mesmer-server$/ }, () => ({
-      namespace: "mesmer",
-      path: "mesmer-server"
-    }));
-
-    build.onLoad({ filter: /^mesmer-client$/, namespace: "mesmer" }, () => {
+    build.onLoad({ filter: CONFIG_FILE_PATTERN }, () => {
       const { pages } = config;
-      const contents = generateClientModuleCode(pages);
+      const contents = mode === MesmerPluginMode.CLIENT
+        ? generateClientModuleCode(pages)
+        : generateServerModuleCode(pages);
 
       return {
         contents,
-        loader: "js",
-        resolveDir: projectPath,
-        watchFiles: [configPath]
+        loader: "js"
       };
     });
 
-    build.onLoad({ filter: /^mesmer-server$/, namespace: "mesmer" }, () => {
-      const { pages } = config;
-      const contents = generateServerModuleCode(pages);
-
-      return {
-        contents,
-        loader: "js",
-        resolveDir: projectPath,
-        watchFiles: [configPath]
-      };
-    });
+    if (mode === MesmerPluginMode.CLIENT) {
+      return;
+    }
 
     build.onEnd(({ errors }) => {
       if (errors.length !== 0) {
@@ -251,14 +246,32 @@ const MesmerPlugin = (projectPath) => ({
   }
 });
 
-const getEsbuildBuildOptions = (projectPath, watch) => {
+const getEsbuildClientBuildOptions = (projectPath, watch) => {
   const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
-  const clientBundlePath = Path.join(
+  const configPath = Path.join(projectPath, CONFIG_FILE_NAME);
+  const bundlePath = Path.join(
     buildPath,
     CLIENT_BUNDLE_FILE_NAME.slice(0, -3)
   );
 
-  const serverBundlePath = Path.join(
+  return {
+    watch,
+    entryPoints: {
+      [bundlePath]: configPath
+    },
+    outdir: buildPath,
+    bundle: true,
+    loader: DEFAULT_LOADERS,
+    platform: "browser",
+    logLevel: "silent",
+    plugins: [MesmerPlugin(projectPath, MesmerPluginMode.CLIENT)]
+  };
+};
+
+const getEsbuildServerBuildOptions = (projectPath, watch) => {
+  const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
+  const configPath = Path.join(projectPath, CONFIG_FILE_NAME);
+  const bundlePath = Path.join(
     buildPath,
     SERVER_BUNDLE_FILE_NAME.slice(0, -3)
   );
@@ -266,29 +279,26 @@ const getEsbuildBuildOptions = (projectPath, watch) => {
   return {
     watch,
     entryPoints: {
-      [clientBundlePath]: "mesmer-client",
-      [serverBundlePath]: "mesmer-server"
+      [bundlePath]: configPath
     },
     outdir: buildPath,
     bundle: true,
-    format: "cjs",
-    loader: {
-      ".png": "file",
-      ".jpg": "file",
-      ".svg": "file",
-      ".css": "file"
-    },
-    plugins: [MesmerPlugin(projectPath)]
+    loader: DEFAULT_LOADERS,
+    platform: "node",
+    plugins: [MesmerPlugin(projectPath, MesmerPluginMode.SERVER)]
   };
 };
 
-const build = projectPath => (
-  Esbuild.build(getEsbuildBuildOptions(projectPath, false))
-);
+const build = projectPath => Promise.all([
+  Esbuild.build(getEsbuildClientBuildOptions(projectPath, false)),
+  Esbuild.build(getEsbuildServerBuildOptions(projectPath, false))
+]);
+
 
 const serve = async projectPath => {
   const buildPath = Path.join(projectPath, BUILD_DIR_NAME);
-  const buildOptions = getEsbuildBuildOptions(projectPath, true);
+  const clientBuildOptions = getEsbuildClientBuildOptions(projectPath, true);
+  const serverBuildOptions = getEsbuildServerBuildOptions(projectPath, true);
   const serveOptions = {
     root: buildPath,
     host: "0.0.0.0",
@@ -296,11 +306,14 @@ const serve = async projectPath => {
     wait: 0.5
   };
 
-  const watcher = await Esbuild.build(buildOptions);
+  const watchers = await Promise.all([
+    Esbuild.build(clientBuildOptions),
+    Esbuild.build(serverBuildOptions)
+  ]);
 
   LiveServer.start(serveOptions);
 
-  return watcher.wait;
+  return Promise.all(watchers.map(watcher => watcher.wait));
 };
 
 export {
