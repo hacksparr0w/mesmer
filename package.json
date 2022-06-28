@@ -27,7 +27,9 @@
   "dependencies": {
     "@mdx-js/esbuild": "^2.1.2",
     "common-path": "^1.0.1",
-    "glob": "^8.0.3"
+    "glob": "^8.0.3",
+    "live-server": "^1.2.2",
+    "yargs": "^17.5.1"
   },
   "peerDependencies": {
     "react": "^18.2.0",
