@@ -169,7 +169,6 @@ const buildPages = async (projectPath, config) => {
 
     const contents = renderHtmlString(ReactDomServer, element);
 
-    console.log("writing file...", contents);
     return writeTextFile(pageBuildPath, contents);
   }));
 };
@@ -221,7 +220,6 @@ const MesmerPlugin = (projectPath) => ({
     });
 
     build.onLoad({ filter: /^mesmer-server$/, namespace: "mesmer" }, () => {
-      console.log("onLoad");
       const { pages } = config;
       const contents = generateServerModuleCode(pages);
 
@@ -234,7 +232,6 @@ const MesmerPlugin = (projectPath) => ({
     });
 
     build.onEnd(({ errors }) => {
-      console.log("onEnd");
       if (errors.length !== 0) {
         return;
       }
@@ -265,6 +262,12 @@ const getEsbuildBuildOptions = (projectPath, watch) => {
     outdir: buildPath,
     bundle: true,
     format: "cjs",
+    loader: {
+      ".png": "file",
+      ".jpg": "file",
+      ".svg": "file",
+      ".css": "file"
+    },
     plugins: [MesmerPlugin(projectPath)]
   };
 };
