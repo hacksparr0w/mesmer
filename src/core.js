@@ -51,12 +51,14 @@ const generateClientModuleCode = pages => {
       let { pathname } = location;
 
       if (pathname.endsWith("/")) {
-        location += "index.html";
+        pathname += "index.html";
       }
 
       const response = await fetch("./${METADATA_FILE_NAME}");
       const metadata = await response.json();
-      const pageMetadata = metadata.pages[pathname];
+      const pageMetadata = metadata.pages.find(
+        ({ documentPath }) => documentPath === pathname
+      );
 
       metadata["page"] = pageMetadata;
 
@@ -118,41 +120,49 @@ const buildPages = async (projectPath, config) => {
   );
 
   const candidates = zip(pages, pageModuleCommonPaths).map(page => {
-    const [{ moduleExportName }, { subPart, namePart }] = page;
-    const pageRelPath = "/" + Path.join(subPart, `${namePart}.html`);
-    const pageBuildPath = Path.join(buildPath, pageRelPath);
-    const pageModule = bundle[moduleExportName];
-    const pageMetadata = Object.assign(
+    const [{ modulePath, moduleExportName }, { subPart, namePart }] = page;
+    const relativeDocumentPath = "/" + Path.join(subPart, `${namePart}.html`);
+    const absoluteDocumentPath = Path.join(buildPath, relativeDocumentPath);
+    const module = bundle[moduleExportName];
+    const metadata = Object.assign(
       {},
-      pageModule.metadata,
-      { moduleExportName }
+      module.metadata,
+      {
+        moduleExportName,
+        modulePath,
+        documentPath: relativeDocumentPath
+      }
     );
 
     return {
-      pageRelPath,
-      pageBuildPath,
-      pageModule,
-      pageMetadata
+      relativeDocumentPath,
+      absoluteDocumentPath,
+      module,
+      metadata
     };
   });
 
-  const pagesMetadata = Object.fromEntries(
-    candidates.map(({ pageRelPath, pageMetadata }) => [
-      pageRelPath,
-      pageMetadata
-    ])
-  );
-
-  const metadata = { pages: pagesMetadata, project: projectMetadata };
+  const metadata = {
+    build: {
+      clientBundlePath: `/${CLIENT_BUNDLE_FILE_NAME}`
+    },
+    pages: candidates.map(({ metadata }) => metadata),
+    project: projectMetadata
+  };
 
   await writeJsonFile(metadataPath, metadata);
 
   return Promise.all(candidates.map(candidate => {
-    const { pageBuildPath, pageModule, pageMetadata } = candidate;
+    const {
+      absoluteDocumentPath: documentPath,
+      module,
+      metadata: pageMetadata
+    } = candidate;
+
     const {
       default: pageComponent,
       documentTemplate: documentTemplateModule
-    } = pageModule;
+    } = module;
 
     const props = { metadata: { ...metadata, page: pageMetadata } };
     let element = React.createElement(pageComponent, props);
@@ -169,7 +179,7 @@ const buildPages = async (projectPath, config) => {
 
     const contents = renderHtmlString(ReactDomServer, element);
 
-    return writeTextFile(pageBuildPath, contents);
+    return writeTextFile(documentPath, contents);
   }));
 };
 
