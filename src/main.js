@@ -5,7 +5,7 @@ import Process from "node:process";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
-import { build, serve } from "./core.js";
+import * as Core from "./core.js";
 
 const handleErrors = callable => async (...args) => {
   try {
@@ -20,8 +20,8 @@ const handleErrors = callable => async (...args) => {
   }
 };
 
-const handleBuildCommand = handleErrors(build);
-const handleServeCommand = handleErrors(serve);
+const handleBuildCommand = handleErrors(Core.build);
+const handleServeCommand = handleErrors(Core.serve);
 
 const cli = yargs(hideBin(process.argv))
   .command(
