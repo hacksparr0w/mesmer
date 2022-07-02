@@ -139,6 +139,7 @@ const esbuild = (paths, mode, watch = false, onRebuild = undefined) => {
     bundle: true,
     loader: DEFAULT_LOADERS,
     outdir: buildDirectoryPath,
+    publicPath: "/",
     plugins: [mdx(), BundlePlugin(paths, mode)]
   });
 };
