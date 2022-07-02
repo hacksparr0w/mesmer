@@ -1,3 +1,4 @@
+import Fs from "node:fs/promises";
 import Path from "node:path";
 import Url from "node:url";
 import { Worker } from "node:worker_threads";
@@ -76,9 +77,26 @@ const renderFromBundle = async (paths, config, bundlePages) => {
     };
 
     const {
-      template: { default: templateComponent },
-      default: component
+      parent,
+      template: childTemplate,
+      default: childComponent
     } = module;
+
+    let templateComponent = childTemplate?.default;
+    let component = childComponent;
+
+    if (parent) {
+      const { template: parentTemplate, default: parentComponent } = parent;
+      templateComponent = parentTemplate?.default ?? templateComponent;
+
+      component = (props) => (
+        React.createElement(
+          parentComponent,
+          props,
+          React.createElement(childComponent, props)
+        )
+      );
+    }
 
     return {
       component,
@@ -100,7 +118,7 @@ const renderFromBundle = async (paths, config, bundlePages) => {
 
   await Utility.writeJsonFile(metadataFilePath, metadata);
 
-  return Promise.all(candidates.map(candidate => {
+  return Promise.all(candidates.map(async candidate => {
     const { component, documentFilePath, templateComponent } = candidate;
     const page = Page({
       component,
@@ -110,6 +128,18 @@ const renderFromBundle = async (paths, config, bundlePages) => {
         page: candidate.metadata
       }
     });
+
+    const parentDirectoryPath = Path.dirname(documentFilePath);
+
+    try {
+      await Fs.stat(parentDirectoryPath);
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        await Fs.mkdir(parentDirectoryPath, { recursive: true });
+      } else {
+        throw error;
+      }
+    }
 
     return renderPageToFile(React, ReactDomServer, page, documentFilePath);
   }));

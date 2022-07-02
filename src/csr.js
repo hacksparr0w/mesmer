@@ -14,7 +14,23 @@ const hydratePage = async (pageModules, metadataFilePath) => {
   metadata["page"] = pageMetadata;
 
   const module = pageModules[pageMetadata.moduleExportName];
-  const { default: component, template } = module;
+  const { parent, template: childTemplate, default: childComponent } = module;
+
+  let template = childTemplate;
+  let component = childComponent;
+
+  if (parent) {
+    const { template: parentTemplate, default: parentComponent } = parent;
+
+    template = parentTemplate ?? template;
+    component = (props) => (
+      React.createElement(
+        parentComponent,
+        props,
+        React.createElement(childComponent, props)
+      )
+    );
+  }
 
   if (!template) {
     return;

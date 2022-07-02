@@ -1,8 +1,9 @@
 import Path from "node:path";
 
+import mdx from "@mdx-js/esbuild";
 import Esbuild from "esbuild";
 
-import * as Csr from "./csr.js";
+import * as Codegen from "./codegen.js";
 import * as Config from "./config.js";
 import * as Utility from "./utility.js";
 
@@ -18,54 +19,6 @@ const Page = ({ moduleFilePath, moduleExportName }) => ({
   moduleFilePath,
   moduleExportName
 });
-
-const generatePageModuleExportName = moduleFilePath => {
-  const name = Path.parse(moduleFilePath).name;
-  const id = Utility.hash(moduleFilePath);
-  const prefix = name.match(/^\d/) ? "_" : "";
-
-  return `${prefix}${name}${id}`;
-};
-
-const generateClientModuleCode = (pages, metadataFilePath) => {
-  const lines = [];
-
-  lines.push(`import React from "react";`);
-  lines.push(`import ReactDomClient from "react-dom/client";`);
-
-  for (const { moduleFilePath, moduleExportName } of pages) {
-    lines.push(`import * as ${moduleExportName} from "${moduleFilePath}";`);
-  }
-
-  lines.push(`const pageModules = {};`);
-
-  for (const { moduleExportName } of pages) {
-    lines.push(`pageModules["${moduleExportName}"] = ${moduleExportName};`);
-  }
-
-  lines.push(
-    `(${Csr.hydratePage.toString()})(pageModules, "${metadataFilePath}");`
-  );
-
-  const contents = lines.join("\n");
-
-  return contents;
-};
-
-const generateServerModuleCode = pages => {
-  const lines = [];
-
-  lines.push(`export * as React from "react";`);
-  lines.push(`export * as ReactDomServer from "react-dom/server";`);
-
-  for (const { moduleFilePath, moduleExportName } of pages) {
-    lines.push(`export * as ${moduleExportName} from "${moduleFilePath}";`);
-  }
-
-  const contents = lines.join("\n");
-
-  return contents;
-};
 
 const BundleMode = {
   CLIENT: "CLIENT",
@@ -98,18 +51,18 @@ const BundlePlugin = (paths, mode) => ({
 
       pages = pageModuleFilePaths.map(moduleFilePath => Page({
         moduleFilePath,
-        moduleExportName: generatePageModuleExportName(moduleFilePath)
+        moduleExportName: Codegen.generatePageModuleExportName(moduleFilePath)
       }));
 
       let contents;
 
       if (mode === BundleMode.CLIENT) {
-        contents = generateClientModuleCode(
+        contents = Codegen.generateClientModuleCode(
           pages,
           `/${Path.relative(buildDirectoryPath, metadataFilePath)}`
         );
       } else {
-        contents = generateServerModuleCode(pages);
+        contents = Codegen.generateServerModuleCode(pages);
       }
 
       return {
@@ -186,7 +139,7 @@ const esbuild = (paths, mode, watch = false, onRebuild = undefined) => {
     bundle: true,
     loader: DEFAULT_LOADERS,
     outdir: buildDirectoryPath,
-    plugins: [BundlePlugin(paths, mode)]
+    plugins: [mdx(), BundlePlugin(paths, mode)]
   });
 };
 
