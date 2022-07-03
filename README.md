@@ -22,3 +22,36 @@ server-side rendering.
  - [ ] :recycle: A programmatic interface for dynamic page generation,
  - [ ] :electric_plug: A plugin system letting you hook into the build process
    and add features like page previews or search index generation.
+
+## Getting Started
+
+### System Requirements
+
+You should be running at least Node 16 on your system for everything to run
+properly.
+
+### Starting with Mesmer Starter
+
+[Mesmer Starter][1] is a very simple example project that gets you running
+developmen server with a basic setup in a matter of minutes. If you just want
+to start hacking, clone the Mesmer Starter repository by running
+
+```
+git clone https://github.com/hacksparr0w/mesmer-starter.git
+```
+
+You can then use `npm run dev` or `npm run build` to start a development server
+or build the whole thing.
+
+### Starting from Scratch
+
+If you prefer to start with minimal setup, you can easily do so by running
+
+```sh
+npm i mesmer react react-dom
+```
+
+See the documentation section below to find out how to point Mesmer to your
+ES modules for static site generation.
+
+[1]: https://github.com/hacksparr0w/mesmer-starter
