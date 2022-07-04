@@ -56,6 +56,13 @@ ES modules for static site generation.
 
 ## API
 
+ - [`mesmer.json`](#mesmerjson)
+ - [`module.default`](#moduledefault)
+ - [`module.metadata`](#modulemetadata)
+ - [`module.template`](#moduletemplate)
+ - [`module.containerSelector`](#modulecontainerselector)
+ - [`module.parent`](#moduleparent)
+
 ### `mesmer.json`
 
 `mesmer.json` is a configuration file that lets Mesmer know where to look for
@@ -304,8 +311,8 @@ bit different. It is mainly used in MDX files, where you cannot explicitly
 affect the generated `module.default` export. When Mesmer encounters module
 with `module.parent` export, it will use the React component defined by
 `module.default` export of the parent module as the uppermost React component,
-passing the child `module.default` component as a child element. Both of the
-components get passed Mesmer's metadata object.
+passing it the child's `module.default` component as a child element. Both of
+the components get passed Mesmer's metadata object.
 
 The `module.parent` export should, once again, point to an ES module, not a
 React component. If a parent module has `module.template` export, it will be
