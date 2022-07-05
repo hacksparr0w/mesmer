@@ -397,4 +397,19 @@ export default ({
 };
 ```
 
+## CLI
+
+ - [`mesmer build`](#mesmer-build)
+ - [`mesmer serve`](#mesmer-serve)
+
+### `mesmer build`
+
+The build command looks for the `mesmer.json` configuration file in your
+current directory and uses it to build your project into a `build` folder.
+
+### `mesmer serve`
+
+The serve command starts a local development server with live reload that
+listens for changes made to your source files.
+
 [1]: https://github.com/hacksparr0w/mesmer-starter
