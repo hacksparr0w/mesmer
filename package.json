@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "description": "Delightful static site generator based on React",
   "bin": "./src/main.js",
-  "exports": {
-    ".": "./src/index.js"
+  "scripts": {
+    "test": "node ./src/main.js --help"
   },
   "repository": {
     "type": "git",
