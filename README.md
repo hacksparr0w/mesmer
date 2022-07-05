@@ -420,4 +420,10 @@ current directory and uses it to build your project into a `build` folder.
 The serve command starts a local development server with live reload that
 listens for changes made to your source files.
 
+## Issues
+
+Found bug or have an idea for a cool feature? Please, open an issue in our
+[issue tracker][2].
+
 [1]: https://github.com/hacksparr0w/mesmer-starter
+[2]: https://github.com/hacksparr0w/mesmer/issues
