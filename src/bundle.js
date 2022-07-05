@@ -157,6 +157,15 @@ const watch = async (paths, onRebuild) => {
   const [clientWatcher, serverWatcher] = await Promise.all([
     esbuild(paths, BundleMode.CLIENT, true),
     esbuild(paths, BundleMode.SERVER, true, onRebuild)
+      .then(async result => {
+        if (result.errors.length !== 0) {
+          return result;
+        }
+
+        await onRebuild(null, result);
+
+        return result;
+      })
   ]);
 
   const stop = () => {
