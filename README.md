@@ -66,11 +66,10 @@ ES modules for static site generation.
 ### `mesmer.json`
 
 `mesmer.json` is a configuration file that lets Mesmer know where to look for
-your ES modules that will later be rendered into HTML documents. Each ES module
-you include in your project's configuration file should contain at least a
-`default` export pointing to a React component that shall be used in the
-rendering process. All possible module exports that can affect Mesmer's
-behavior will be discussed later.
+your ES modules. Each ES module you include in your project's configuration
+file should contain at least a `default` export pointing to a React component
+that shall be used in the rendering process. All possible module exports that
+can affect Mesmer's behavior will be discussed later.
 
 An example `mesmer.json` file can look roughly as following
 
@@ -87,25 +86,22 @@ An example `mesmer.json` file can look roughly as following
 }
 ```
 
-Right away you can notice that the configuration object contains `metadata`
-and `pages` properties. The `metadata` property will be discussed later.
-For now, let's focus on the `pages` configuration property. This property is
-simply an array of glob patterns that specify paths to your ES modules. Each
-ES module matched by the glob patterns gets rendered into a single HTML page.
+Right away, you can notice that the configuration object contains `metadata`
+and `pages` properties. `pages` property is simply an array of glob patterns
+that specify paths to your ES modules. Each ES module matched by a glob
+pattern gets rendered into a single HTML page.
 
-As already stated, we will discuss the `metadata` property in greater depth
-later. For now, all you need to know is that this property is related to
-Mesmer's metadata system. This property will be merged with other `metadata`
-properties and will be passed to React components during rendering as a
-`metadata.project` prop. The contents of the `metadata` object are entirely
-defined by the user and this object does not need to be present in the Mesmer
-configuration at all.
+For now, all you need to know about the `metadata` property is that this
+property is related to Mesmer's metadata system. This object will be merged
+with other metadata across the whole project and will be passed to React
+components during rendering. The `metadata` configuration key is optional and
+its value is up to the user to be defined.
 
 ### `module.default`
 
 When rendering your ES modules into HTML documents, Mesmer expects each module
-to have a `default` export of a React component. In practice this can look as
-follows
+to have a `default` export pointing to a React component. In practice your ES
+modules can look as the following
 
 ```js
 import React from "react";
@@ -124,47 +120,55 @@ Let's now talk about Mesmer's metadata system. Each ES module passed to Mesmer
 can optionally export an object called `metadata`. During the rendering phase,
 Mesmer merges all of the exported `metadata` objects from each of your ES
 modules, combines them with some other metadata sources and produces a
-metadata of your whole application. This combined metadata may look as follows
-
-```json
-{
-  "build": {
-    "clientBundleFilePath": "/mesmer-client.js"
-  },
-  "project": {
-    "name": "Mesmer Starter",
-    "githubUrl": "https://github.com/hacksparr0w/mesmer"
-  },
-  "pages": [
-    {
-      "title": "Welcome to Mesmer!",
-      "moduleFilePath": "./src/page/index.jsx",
-      "moduleExportName": "indexd9bd70b55a10a898c8ac536aaf313f9d",
-      "documentFilePath": "/index.html"
-    },
-    {
-      "title": "First blog post",
-      "publishedOn": "Jul 3, 2022",
-      "topic": "blogging",
-      "emoji": "waving-hand",
-      "moduleFilePath": "./src/page/post/first-post.mdx",
-      "moduleExportName": "first_post65408c0e66a0917cc78f35f7a734cccf",
-      "documentFilePath": "/post/first-post.html"
-    }
-  ]
-}
-```
-
-Some metadata values such as `build.clientBundleFilePath` or
-`pages.documentFilePath` are always present in the metadata bundle but other
-properties are completely up to the user to be defined.
-
-The combined metadata object is passed to all React components rendered by
-Mesmer when generating the resultant HTML documents. In this way, it is
+metadata of your whole application. The resultant combined metadata object is
+then passed to your React components as a `metadata` prop. In this way, it is
 possible for all parts of your application to communicate with one another.
 
-Following is a snippet taken from [Mesmer Starter][1] that utilizes the
-metadata system to render a list of all published blog posts on the index page
+Following is a table of metadata props passed down to your React components by
+Mesmer and their respective sources.
+
+<table>
+  <thead>
+    <tr>
+      <th align="center">Prop</th>
+      <th align="center">Source</th>
+      <th align="center">Commentary</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><code>metadata.build<code></td>
+      <td align="center">Autogenerated during build</td>
+      <td align="left">Contains <code>clientBundleFilePath</code></td>
+    </tr>
+    <tr>
+      <td align="center"><code>metadata.page</code></td>
+      <td align="center">Copied from <code>metadata.pages</code></td>
+      <td align="left">A convenience property that changes for each page</td>
+    </tr>
+    <tr>
+      <td align="center"><code>metadata.pages</code></td>
+      <td align="center"><code>module.metadata</code> exports of your ES modules</td>
+      <td align="left">
+        An array of metadata objects from <code>module.metadata</code> exports.
+        Objects contain some generated properties like
+        <code>documentFilePath</code>, <code>moduleExportName</code> or
+        <code>moduleFilePath</code>.
+      </td>
+    </tr>
+    <tr>
+      <td align="center"><code>metadata.project</code></td>
+      <td align="center">
+        <code>metadata</code> property in your <code>mesmer.json</code>
+        configuration
+      </td>
+      <td align="center"> - </td>
+    </tr>
+  </tbody>
+</table>
+
+Below is a snippet taken from Mesmer Starter that utilizes the metadata system
+to render a list of all published blog posts on the front page
 
 ```js
 import React from "react";
@@ -276,16 +280,17 @@ import * as HtmlTemplate from "./HtmlTemplate";
 
 This is an important detail, as the `HtmlTemplate` module might itself export
 some directives influencing the rendering behavior. Mesmer uses ES modules as
-its most elementar API primitive, not React components. This architectural
+its elementary API primitive, not React components. This architectural
 decision was made so that Mesmer can easily support assets like MDX documents
 that compile into a single ES module.
 
 The `HtmlTemplate` itself is actually pretty straightforward. It includes some
 headers linking to local stylesheets and declares a document `<title>`,
 referencing the metadata declared in its child component. The child component
-itself is passed to the template and rendered in the `<body>`. To make your
-React application `hydrate` on the client, you need to include your bundled
-application code. This is done with the following line of code
+is rendered into an element and is passed to the template into its `<body>`.
+To make your React application `hydrate` on the client-side, you need to
+include your bundled application code. This is done with the following line of
+code
 
 ```js
 <script src={clientBundleFilePath} />
@@ -296,7 +301,7 @@ The `clientBundleFilePath` is a property found in the `metadata.build` object.
 Your bundled application code includes a client-side rendering procedure that
 needs to know where exactly in the template it should hydrate your uppermost
 React component to. This information is passed by utilizing the
-`module.containerSelector` export.
+`module.containerSelector` export as you can see in the previous code snippet.
 
 ### `module.containerSelector`
 
@@ -306,24 +311,26 @@ React component be rendered.
 
 ### `module.parent`
 
-`module.parent` export is similar to the `module.template` export, but works a
-bit different. It is mainly used in MDX files, where you cannot explicitly
-affect the generated `module.default` export. When Mesmer encounters module
-with `module.parent` export, it will use the React component defined by
-`module.default` export of the parent module as the uppermost React component,
-passing it the child's `module.default` component as a child element. Both of
-the components get passed Mesmer's metadata object.
+`module.parent` export is very similar to the `module.template` export, but
+works a bit different. It is mainly used in MDX files, where you cannot
+explicitly affect the generated `module.default` export. When Mesmer encounters
+a module with `module.parent` export, it will use the React component defined
+by `module.default` export of the parent module as the uppermost React
+component, passing it the child's `module.default` component as a child
+element. Both of the components get passed Mesmer's metadata object as a prop.
 
 The `module.parent` export should, once again, point to an ES module, not a
 React component. If a parent module has `module.template` export, it will be
 used preferentially before its child's `module.template` export.
 
-Here's a simple example taken from [Mesmer Starter][1] where a `module.parent`
-export is used to specify a parent React component a post should be rendered
-into
+Here's a simple example taken from Mesmer Starter where a `module.parent`
+export is used to specify a parent React component a blog post should be
+rendered into
 
 ```js
 // Contents of first-post.mdx
+
+import * as Post from "./Post";
 
 export const parent = Post;
 
