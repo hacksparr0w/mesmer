@@ -89,7 +89,11 @@ const serve = async projectDirectoryPath => {
 
   await server.start();
 
-  const handleWatchEvent = async () => {
+  const handleWatchEvent = async (event, path) => {
+    if (event === "delete") {
+      watcher.add(path);
+    }
+
     try {
       const { inputFilePaths: updatedInputFilePaths } = await rebuild();
       await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
@@ -120,9 +124,9 @@ const serve = async projectDirectoryPath => {
     }
   };
 
-  watcher.on("add", handleWatchEvent);
-  watcher.on("change", handleWatchEvent);
-  watcher.on("unlink", handleWatchEvent);
+  watcher.on("add", path => handleWatchEvent("create", path));
+  watcher.on("change", path => handleWatchEvent("change", path));
+  watcher.on("unlink", path => handleWatchEvent("delete", path));
 };
 
 export {
