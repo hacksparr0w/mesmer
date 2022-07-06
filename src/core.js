@@ -1,7 +1,6 @@
 import Path from "node:path";
 
-import LiveServer from "live-server";
-
+import * as Http from "./http.js";
 import * as Bundle from "./bundle.js";
 import * as Paths from "./paths.js";
 import * as Ssr from "./ssr.js";
@@ -43,13 +42,11 @@ const build = async projectDirectoryPath => {
 
 const serve = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
-  const serveOptions = {
-    root: paths.buildDirectoryPath,
+  const server = Http.LiveServer({
     host: "0.0.0.0",
     port: 8080,
-    wait: 0.5,
-    logLevel: 0
-  };
+    rootDirectoryPath: paths.buildDirectoryPath
+  });
 
   const onRebuild = async (error, result) => {
     if (error) {
@@ -60,6 +57,8 @@ const serve = async projectDirectoryPath => {
 
     try {
       await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
+
+      server.reload();
     } catch (error) {
       console.error(error);
     }
@@ -67,7 +66,7 @@ const serve = async projectDirectoryPath => {
 
   const { wait } = await Bundle.watch(paths, onRebuild);
 
-  LiveServer.start(serveOptions);
+  await server.start();
 
   return wait();
 };
