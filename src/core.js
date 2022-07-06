@@ -1,9 +1,15 @@
 import Path from "node:path";
 
-import * as Http from "./http.js";
+import Chokidar from "chokidar";
+
 import * as Bundle from "./bundle.js";
+import * as Codegen from "./codegen.js";
+import * as Config from "./config.js";
+import * as Http from "./http.js";
+import * as Logger from "./logger.js";
 import * as Paths from "./paths.js";
 import * as Ssr from "./ssr.js";
+import * as Utility from "./utility.js";
 
 const CLIENT_BUNDLE_FILE_NAME = "mesmer-client.js";
 const CONFIG_FILE_NAME = "mesmer.json";
@@ -33,42 +39,90 @@ const createPaths = projectDirectoryPath => {
   });
 };
 
+const resolvePages = async (pageGlobPatterns, projectDirectoryPath) => {
+  const pageModuleFilePaths = await Utility.globAll(
+    pageGlobPatterns,
+    projectDirectoryPath
+  );
+
+  const pages = pageModuleFilePaths.map(moduleFilePath => Bundle.Page({
+    moduleFilePath,
+    moduleExportName: Codegen.generatePageModuleExportName(moduleFilePath)
+  }));
+
+  return pages;
+};
+
 const build = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
-  const { config, pages } = await Bundle.bundle(paths);
+  const config = await Config.readConfigFile(paths.configFilePath);
+  const pages = await resolvePages(config.pages, projectDirectoryPath);
+
+  await Bundle.bundle(paths, pages);
 
   return Ssr.renderFromBundle(paths, config, pages);
 };
 
 const serve = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
+  const config = await Config.readConfigFile(paths.configFilePath);
+  const pages = await resolvePages(config.pages, projectDirectoryPath);
+
+  let { inputFilePaths, rebuild } = await Bundle.bundle(
+    paths,
+    pages,
+    true
+  );
+
+  await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
+
+  const watcher = Chokidar.watch(
+    inputFilePaths,
+    { disableGlobbing: true, ignoreInitial: true }
+  );
+
   const server = Http.LiveServer({
     host: "0.0.0.0",
     port: 8080,
     rootDirectoryPath: paths.buildDirectoryPath
   });
 
-  const onRebuild = async (error, result) => {
-    if (error) {
-      return;
-    }
+  await server.start();
 
-    const { config, pages } = result;
-
+  const handleWatchEvent = async () => {
     try {
+      const { inputFilePaths: updatedInputFilePaths } = await rebuild();
       await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
+
+      const createdInputFilePaths = Utility.arrayDiff(
+        updatedInputFilePaths,
+        inputFilePaths
+      );
+
+      const deletedInputFilePaths = Utility.arrayDiff(
+        inputFilePaths,
+        updatedInputFilePaths
+      );
+
+      if (createdInputFilePaths.length !== 0) {
+        watcher.add(createdInputFilePaths);
+      }
+
+      if (deletedInputFilePaths.length !== 0) {
+        watcher.unwatch(deletedInputFilePaths);
+      }
+
+      inputFilePaths = updatedInputFilePaths;
 
       server.reload();
     } catch (error) {
-      console.error(error);
+      Logger.logError(error);
     }
   };
 
-  const { wait } = await Bundle.watch(paths, onRebuild);
-
-  await server.start();
-
-  return wait();
+  watcher.on("add", handleWatchEvent);
+  watcher.on("change", handleWatchEvent);
+  watcher.on("unlink", handleWatchEvent);
 };
 
 export {

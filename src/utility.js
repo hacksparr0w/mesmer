@@ -6,8 +6,8 @@ import Glob from "glob";
 
 const DEFAULT_ENCODING = "utf-8";
 
-const flatten = array => (
-  array.reduce((accumulator, value) => [...accumulator, ...value], [])
+const arrayDiff = (first, second) => (
+  first.filter(item => !second.includes(item))
 );
 
 const glob = (pattern, parentPath = undefined) => (
@@ -30,7 +30,7 @@ const globAll = async (patterns, parentPath = undefined) => {
     patterns.map(pattern => glob(pattern, parentPath))
   );
 
-  return flatten(result);
+  return result.flat();
 };
 
 const hash = text => (
@@ -68,7 +68,7 @@ const zip = (...arrays) => {
 };
 
 export {
-  flatten,
+  arrayDiff,
   glob,
   globAll,
   hash,

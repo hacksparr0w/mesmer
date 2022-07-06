@@ -6,16 +6,13 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 import * as Core from "./core.js";
+import * as Logger from "./logger.js";
 
 const handleErrors = callable => async (...args) => {
   try {
     await callable(...args);
   } catch (error) {
-    if (!("errors" in error) || error.errors.length < 1) {
-      console.log("An unexpected error has occurred");
-      console.error(error);
-    }
-
+    Logger.logError(error);
     Process.exit(1);
   }
 };

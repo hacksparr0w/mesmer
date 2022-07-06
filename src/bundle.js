@@ -1,11 +1,10 @@
+import Fs from "node:fs/promises";
 import Path from "node:path";
 
 import mdx from "@mdx-js/esbuild";
 import Esbuild from "esbuild";
 
 import * as Codegen from "./codegen.js";
-import * as Config from "./config.js";
-import * as Utility from "./utility.js";
 
 const BUNDLE_PLUGIN_NAME = "mesmer";
 const DEFAULT_LOADERS = {
@@ -25,11 +24,10 @@ const BundleMode = {
   SERVER: "SERVER"
 };
 
-const BundlePlugin = (paths, mode) => ({
+const BundlePlugin = (paths, pages, mode) => ({
   name: BUNDLE_PLUGIN_NAME,
   setup: async build => {
     const {
-      projectDirectoryPath,
       buildDirectoryPath,
       configFilePath,
       metadataFilePath
@@ -39,21 +37,7 @@ const BundlePlugin = (paths, mode) => ({
       `${Path.parse(configFilePath).base}$`
     );
 
-    let config;
-    let pages;
-
     build.onLoad({ filter: configFilePattern }, async () => {
-      config = await Config.readConfigFile(configFilePath);
-      const pageModuleFilePaths = await Utility.globAll(
-        config.pages,
-        projectDirectoryPath
-      );
-
-      pages = pageModuleFilePaths.map(moduleFilePath => Page({
-        moduleFilePath,
-        moduleExportName: Codegen.generatePageModuleExportName(moduleFilePath)
-      }));
-
       let contents;
 
       if (mode === BundleMode.CLIENT) {
@@ -70,19 +54,10 @@ const BundlePlugin = (paths, mode) => ({
         loader: "js"
       };
     });
-
-    build.onEnd(result => {
-      if (result.errors.length !== 0) {
-        return;
-      }
-
-      result.config = config;
-      result.pages = pages;
-    });
   }
 });
 
-const esbuild = (paths, mode, watch = false, onRebuild = undefined) => {
+const esbuild = (paths, pages, mode, incremental) => {
   const {
     buildDirectoryPath,
     clientBundleFilePath,
@@ -92,24 +67,13 @@ const esbuild = (paths, mode, watch = false, onRebuild = undefined) => {
 
   let bundleFilePath;
   let platform;
-  let logLevel;
-
-  //
-  // TODO: Silencing the client builder is actually very dangerous and may
-  // potentially hide important error messages from users!
-  //
-  // Another problem with having two separate build processes like this is
-  // that some resources get written out to the filesystem twice!
-  //
 
   if (mode === BundleMode.CLIENT) {
     bundleFilePath = clientBundleFilePath;
     platform = "browser";
-    logLevel = "silent";
   } else {
     bundleFilePath = serverBundleFilePath;
     platform = "node";
-    logLevel = "warning";
   }
 
   bundleFilePath = bundleFilePath.slice(
@@ -117,74 +81,93 @@ const esbuild = (paths, mode, watch = false, onRebuild = undefined) => {
     -Path.parse(bundleFilePath).ext.length
   );
 
-  let watchOptions;
-
-  if (watch) {
-    watchOptions = true;
-
-    if (onRebuild) {
-      watchOptions = { onRebuild };
-    }
-  } else {
-    watchOptions = false;
-  }
-
   return Esbuild.build({
     platform,
-    logLevel,
+    incremental,
+    logLevel: "silent",
     entryPoints: {
       [bundleFilePath]: configFilePath
     },
-    watch: watchOptions,
     bundle: true,
+    write: false,
+    metafile: true,
     loader: DEFAULT_LOADERS,
     outdir: buildDirectoryPath,
     publicPath: "/",
-    plugins: [mdx(), BundlePlugin(paths, mode)]
+    plugins: [mdx(), BundlePlugin(paths, pages, mode)]
   });
 };
 
-const bundle = async paths => {
-  const [_, serverBuilderResult] = await Promise.all([
-    esbuild(paths, BundleMode.CLIENT),
-    esbuild(paths, BundleMode.SERVER)
-  ]);
+const compareErrors = (first, second) => (
+  first.text === second.text &&
+  first.location.column === second.location.column &&
+  first.location.file === second.location.file &&
+  first.location.line === second.location.line
+);
 
-  return serverBuilderResult;
+const compareOutputFiles = (first, second) => (
+  first.path === second.path
+);
+
+const isUniqueItem = compare => (first, firstIndex, array) => {
+  const secondIndex = array
+    .findIndex((second) => compare(first, second));
+
+  return firstIndex === secondIndex;
 };
 
-const watch = async (paths, onRebuild) => {
-  const [clientWatcher, serverWatcher] = await Promise.all([
-    esbuild(paths, BundleMode.CLIENT, true),
-    esbuild(paths, BundleMode.SERVER, true, onRebuild)
-      .then(async result => {
-        if (result.errors.length !== 0) {
-          return result;
-        }
+const processEsbuildResults = async (promises) => {
+  const results = await Promise.allSettled(promises);
+  const errors = results
+    .filter(({ status }) => status === "rejected")
+    .map(({ reason: { errors }}) => errors)
+    .flat()
+    .filter(isUniqueItem(compareErrors));
 
-        await onRebuild(null, result);
+  if (errors.length !== 0) {
+    const error = new Error();
+    error.errors = errors;
 
-        return result;
-      })
-  ]);
+    throw error;
+  }
 
-  const stop = () => {
-    clientWatcher.stop();
-    serverWatcher.stop();
-  };
+  const outputFiles = results
+    .map(({ value: { outputFiles } }) => outputFiles)
+    .flat()
+    .filter(isUniqueItem(compareOutputFiles));
 
-  const wait = () => Promise.all([
-    clientWatcher.wait,
-    serverWatcher.wait
-  ]);
+  await Promise.all(
+    outputFiles.map(({ path, contents }) => Fs.writeFile(path, contents))
+  );
+
+  const inputFilePaths = results
+    .map(({ value: { metafile } }) => Object.keys(metafile.inputs))
+    .flat()
+    .filter(isUniqueItem((a, b) => a === b));
+
+  const rebuild = () => (
+    processEsbuildResults(results.map(({ value }) => value.rebuild()))
+  );
+
+  const dispose = () => (
+    results.forEach(({ value }) => value.rebuild.dispose())
+  );
 
   return {
-    stop,
-    wait
+    inputFilePaths,
+    rebuild,
+    dispose
   };
 };
 
+const bundle = async (paths, pages, incremental = false) => (
+  processEsbuildResults([
+    esbuild(paths, pages, BundleMode.CLIENT, incremental),
+    esbuild(paths, pages, BundleMode.SERVER, incremental)
+  ])
+);
+
 export {
-  bundle,
-  watch
+  Page,
+  bundle
 };
