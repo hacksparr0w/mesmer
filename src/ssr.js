@@ -5,7 +5,7 @@ import { Worker } from "node:worker_threads";
 
 import commonPath from "common-path";
 
-import * as Utility from "./utility.js";
+import { joinUrl, writeJsonFile, writeTextFile, zip } from "./utility.js";
 
 const HTML_DOCTYPE = "<!DOCTYPE html>";
 
@@ -13,6 +13,13 @@ const Page = ({ component, templateComponent, metadata }) => ({
   component,
   templateComponent,
   metadata
+});
+
+const SsrOptions = ({ paths, projectMetadata, bundlePages, baseUrl }) => ({
+  paths,
+  projectMetadata,
+  bundlePages,
+  baseUrl
 });
 
 const renderElementToString = (ReactDomServer, element) => {
@@ -37,16 +44,21 @@ const renderPageToString = (React, ReactDomServer, page) => {
 const renderPageToFile = (React, ReactDomServer, page, path) => {
   const contents = renderPageToString(React, ReactDomServer, page);
 
-  return Utility.writeTextFile(path, contents);
+  return writeTextFile(path, contents);
 };
 
-const renderFromBundle = async (paths, config, bundlePages) => {
+const renderFromBundle = async options => {
   const {
-    buildDirectoryPath,
-    clientBundleFilePath,
-    metadataFilePath,
-    serverBundleFilePath
-  } = paths;
+    baseUrl,
+    bundlePages,
+    projectMetadata,
+    paths: {
+      buildDirectoryPath,
+      clientBundleFilePath,
+      metadataFilePath,
+      serverBundleFilePath
+    }
+  } = options;
 
   const { default: bundle } = await import(serverBundleFilePath);
   const { React, ReactDomServer } = bundle;
@@ -55,7 +67,7 @@ const renderFromBundle = async (paths, config, bundlePages) => {
     "moduleFilePath"
   );
 
-  const candidates = Utility.zip(
+  const candidates = zip(
     bundlePages,
     commonPageModulePaths
   ).map(item => {
@@ -66,14 +78,17 @@ const renderFromBundle = async (paths, config, bundlePages) => {
       `${namePart}.html`
     );
 
+    const documentFileUrl = joinUrl(
+      baseUrl,
+      Path.relative(buildDirectoryPath, documentFilePath)
+    );
+
     const module = bundle[moduleExportName];
     const metadata = {
       ...Object.assign({}, module.metadata),
       moduleFilePath,
       moduleExportName,
-      documentFilePath: (
-        `/${Path.relative(buildDirectoryPath, documentFilePath)}`
-      )
+      documentFileUrl
     };
 
     const {
@@ -106,17 +121,18 @@ const renderFromBundle = async (paths, config, bundlePages) => {
     };
   });
 
+  const clientBundleFileUrl = joinUrl(
+    baseUrl,
+    Path.relative(buildDirectoryPath, clientBundleFilePath)
+  );
+
   const metadata = {
-    build: {
-      clientBundleFilePath: (
-        `/${Path.relative(buildDirectoryPath, clientBundleFilePath)}`
-      )
-    },
-    project: config.metadata,
+    build: { clientBundleFileUrl },
+    project: projectMetadata,
     pages: candidates.map(({ metadata }) => metadata)
   };
 
-  await Utility.writeJsonFile(metadataFilePath, metadata);
+  await writeJsonFile(metadataFilePath, metadata);
 
   return Promise.all(candidates.map(async candidate => {
     const { component, documentFilePath, templateComponent } = candidate;
@@ -145,17 +161,13 @@ const renderFromBundle = async (paths, config, bundlePages) => {
   }));
 };
 
-const renderFromBundleInWorkerThread = (paths, config, bundlePages) => {
+const renderFromBundleInWorkerThread = options => {
   const workerFilePath = Path.join(
     Path.dirname(Url.fileURLToPath(import.meta.url)),
     "./ssr-worker.js"
   );
 
-  const worker = new Worker(
-    workerFilePath,
-    { workerData: { paths, config, bundlePages } }
-  );
-
+  const worker = new Worker(workerFilePath, { workerData: { options } });
   const result = new Promise((resolve, reject) => {
     worker.once("exit", resolve);
     worker.once("error", reject);
@@ -166,6 +178,7 @@ const renderFromBundleInWorkerThread = (paths, config, bundlePages) => {
 
 export {
   Page,
+  SsrOptions,
   renderElementToString,
   renderFromBundle,
   renderFromBundleInWorkerThread,

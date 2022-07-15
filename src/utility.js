@@ -1,10 +1,11 @@
 import Crypto from "node:crypto";
 import Fs from "node:fs/promises";
+import Path from "node:path";
 import Process from "node:process";
 
 import Glob from "glob";
 
-const DEFAULT_ENCODING = "utf-8";
+const DEFAULT_TEXT_ENCODING = "utf-8";
 
 const arrayDiff = (first, second) => (
   first.filter(item => !second.includes(item))
@@ -35,9 +36,24 @@ const globAll = async (patterns, parentPath = undefined) => {
 
 const hash = text => (
   Crypto.createHash("md5").update(text).digest("hex")
-)
+);
 
-const readTextFile = async (path, encoding = DEFAULT_ENCODING) => (
+const isUniqueElement = compare => (firstElement, firstIndex, array) => {
+  const secondIndex = array
+    .findIndex(secondElement => compare(firstElement, secondElement));
+
+  return firstIndex === secondIndex;
+};
+
+const joinUrl = (baseUrl, path) => {
+  if (baseUrl === "/") {
+    return Path.join(baseUrl, path);
+  }
+
+  return new URL(path, baseUrl).href;
+};
+
+const readTextFile = async (path, encoding = DEFAULT_TEXT_ENCODING) => (
   Fs.readFile(path, encoding)
 );
 
@@ -48,7 +64,7 @@ const readJsonFile = async (path, encoding = undefined) => {
   return data;
 };
 
-const writeTextFile = (path, contents, encoding = DEFAULT_ENCODING) => (
+const writeTextFile = (path, contents, encoding = DEFAULT_TEXT_ENCODING) => (
   Fs.writeFile(path, contents, encoding)
 );
 
@@ -72,6 +88,8 @@ export {
   glob,
   globAll,
   hash,
+  isUniqueElement,
+  joinUrl,
   readTextFile,
   readJsonFile,
   writeJsonFile,

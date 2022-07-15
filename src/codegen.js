@@ -50,7 +50,7 @@ const generatePageModuleMap = (name, pages) => {
   return lines.join("\n");
 };
 
-const generateClientModuleCode = (pages, metadataFilePath) => {
+const generateClientModuleCode = (pages, metadataFileUrl) => {
   const lines = [];
 
   lines.push(`import React from "react";`);
@@ -61,7 +61,7 @@ const generateClientModuleCode = (pages, metadataFilePath) => {
   lines.push(generatePageModuleMap("pageModules", pages));
 
   lines.push(
-    `(${Csr.hydratePage.toString()})(pageModules, "${metadataFilePath}");`
+    `(${Csr.hydratePage.toString()})(pageModules, "${metadataFileUrl}");`
   );
 
   return lines.join("\n");

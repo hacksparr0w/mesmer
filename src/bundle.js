@@ -5,6 +5,7 @@ import mdx from "@mdx-js/esbuild";
 import Esbuild from "esbuild";
 
 import * as Codegen from "./codegen.js";
+import { isUniqueElement, joinUrl } from "./utility.js";
 
 const BUNDLE_PLUGIN_NAME = "mesmer";
 const DEFAULT_LOADERS = {
@@ -14,24 +15,37 @@ const DEFAULT_LOADERS = {
   ".css": "file"
 };
 
-const Page = ({ moduleFilePath, moduleExportName }) => ({
-  moduleFilePath,
-  moduleExportName
-});
-
 const BundleMode = {
   CLIENT: "CLIENT",
   SERVER: "SERVER"
 };
 
-const BundlePlugin = (paths, pages, mode) => ({
+const BundleOptions = ({ mode, paths, pages, baseUrl, incremental }) => ({
+  mode,
+  paths,
+  pages,
+  baseUrl,
+  incremental
+});
+
+const Page = ({ moduleFilePath, moduleExportName }) => ({
+  moduleFilePath,
+  moduleExportName
+});
+
+const BundlePlugin = options => ({
   name: BUNDLE_PLUGIN_NAME,
   setup: async build => {
     const {
-      buildDirectoryPath,
-      configFilePath,
-      metadataFilePath
-    } = paths;
+      mode,
+      pages,
+      baseUrl,
+      paths: {
+        buildDirectoryPath,
+        configFilePath,
+        metadataFilePath
+      }
+    } = options;
 
     const configFilePattern = new RegExp(
       `${Path.parse(configFilePath).base}$`
@@ -39,11 +53,15 @@ const BundlePlugin = (paths, pages, mode) => ({
 
     build.onLoad({ filter: configFilePattern }, async () => {
       let contents;
+      const metadataFileUrl = joinUrl(
+        baseUrl,
+        Path.relative(buildDirectoryPath, metadataFilePath)
+      );
 
       if (mode === BundleMode.CLIENT) {
         contents = Codegen.generateClientModuleCode(
           pages,
-          `/${Path.relative(buildDirectoryPath, metadataFilePath)}`
+          metadataFileUrl
         );
       } else {
         contents = Codegen.generateServerModuleCode(pages);
@@ -57,13 +75,18 @@ const BundlePlugin = (paths, pages, mode) => ({
   }
 });
 
-const esbuild = (paths, pages, mode, incremental) => {
+const esbuild = options => {
   const {
-    buildDirectoryPath,
-    clientBundleFilePath,
-    configFilePath,
-    serverBundleFilePath
-  } = paths;
+    mode,
+    incremental,
+    baseUrl,
+    paths: {
+      buildDirectoryPath,
+      clientBundleFilePath,
+      configFilePath,
+      serverBundleFilePath
+    }
+  } = options;
 
   let bundleFilePath;
   let platform;
@@ -93,36 +116,29 @@ const esbuild = (paths, pages, mode, incremental) => {
     metafile: true,
     loader: DEFAULT_LOADERS,
     outdir: buildDirectoryPath,
-    publicPath: "/",
-    plugins: [mdx(), BundlePlugin(paths, pages, mode)]
+    publicPath: baseUrl,
+    plugins: [mdx(), BundlePlugin(options)]
   });
 };
 
-const compareErrors = (first, second) => (
-  first.text === second.text &&
-  first.location.column === second.location.column &&
-  first.location.file === second.location.file &&
-  first.location.line === second.location.line
-);
+const multibuild = async promises => {
+  const compareErrors = (first, second) => (
+    first.text === second.text &&
+    first.location.column === second.location.column &&
+    first.location.file === second.location.file &&
+    first.location.line === second.location.line
+  );
 
-const compareOutputFiles = (first, second) => (
-  first.path === second.path
-);
+  const compareOutputFiles = (first, second) => (
+    first.path === second.path
+  );
 
-const isUniqueItem = compare => (first, firstIndex, array) => {
-  const secondIndex = array
-    .findIndex((second) => compare(first, second));
-
-  return firstIndex === secondIndex;
-};
-
-const processEsbuildResults = async (promises) => {
   const results = await Promise.allSettled(promises);
   const errors = results
     .filter(({ status }) => status === "rejected")
     .map(({ reason: { errors }}) => errors)
     .flat()
-    .filter(isUniqueItem(compareErrors));
+    .filter(isUniqueElement(compareErrors));
 
   if (errors.length !== 0) {
     const error = new Error();
@@ -134,7 +150,7 @@ const processEsbuildResults = async (promises) => {
   const outputFiles = results
     .map(({ value: { outputFiles } }) => outputFiles)
     .flat()
-    .filter(isUniqueItem(compareOutputFiles));
+    .filter(isUniqueElement(compareOutputFiles));
 
   await Promise.all(
     outputFiles.map(({ path, contents }) => Fs.writeFile(path, contents))
@@ -143,10 +159,10 @@ const processEsbuildResults = async (promises) => {
   const inputFilePaths = results
     .map(({ value: { metafile } }) => Object.keys(metafile.inputs))
     .flat()
-    .filter(isUniqueItem((a, b) => a === b));
+    .filter(isUniqueElement((a, b) => a === b));
 
   const rebuild = () => (
-    processEsbuildResults(results.map(({ value }) => value.rebuild()))
+    multibuild(results.map(({ value }) => value.rebuild()))
   );
 
   const dispose = () => (
@@ -160,14 +176,15 @@ const processEsbuildResults = async (promises) => {
   };
 };
 
-const bundle = async (paths, pages, incremental = false) => (
-  processEsbuildResults([
-    esbuild(paths, pages, BundleMode.CLIENT, incremental),
-    esbuild(paths, pages, BundleMode.SERVER, incremental)
+const bundle = async options => (
+  multibuild([
+    esbuild(BundleOptions({ ...options, mode: BundleMode.CLIENT })),
+    esbuild(BundleOptions({ ...options, mode: BundleMode.SERVER }))
   ])
 );
 
 export {
+  BundleOptions,
   Page,
   bundle
 };

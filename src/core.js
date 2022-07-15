@@ -56,25 +56,58 @@ const resolvePages = async (pageGlobPatterns, projectDirectoryPath) => {
 const build = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
   const config = await Config.readConfigFile(paths.configFilePath);
-  const pages = await resolvePages(config.pages, projectDirectoryPath);
+  const {
+    metadata: projectMetadata,
+    build: {
+      baseUrl
+    }
+  } = config;
 
-  await Bundle.bundle(paths, pages);
+  const pages = await resolvePages(config.build.pages, projectDirectoryPath);
 
-  return Ssr.renderFromBundle(paths, config, pages);
+  await Bundle.bundle(
+    Bundle.BundleOptions({
+      paths,
+      pages,
+      baseUrl
+    })
+  );
+
+  return Ssr.renderFromBundle(
+    Ssr.SsrOptions({
+      paths,
+      projectMetadata,
+      baseUrl,
+      bundlePages: pages
+    })
+  );
 };
 
 const serve = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
   const config = await Config.readConfigFile(paths.configFilePath);
-  const pages = await resolvePages(config.pages, projectDirectoryPath);
-
-  let { inputFilePaths, rebuild } = await Bundle.bundle(
+  const { metadata: projectMetadata } = config;
+  const host = "localhost";
+  const port = 8080;
+  const baseUrl = `http://${host}:${port}/`;
+  const pages = await resolvePages(config.build.pages, projectDirectoryPath);
+  const bundleOptions = Bundle.BundleOptions({
     paths,
     pages,
-    true
-  );
+    baseUrl,
+    incremental: true
+  });
 
-  await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
+  const ssrOptions = Ssr.SsrOptions({
+    paths,
+    projectMetadata,
+    baseUrl,
+    bundlePages: pages
+  });
+
+  let { inputFilePaths, rebuild } = await Bundle.bundle(bundleOptions);
+
+  await Ssr.renderFromBundleInWorkerThread(ssrOptions);
 
   const watcher = Chokidar.watch(
     inputFilePaths,
@@ -82,8 +115,8 @@ const serve = async projectDirectoryPath => {
   );
 
   const server = Http.LiveServer({
-    host: "0.0.0.0",
-    port: 8080,
+    host,
+    port,
     rootDirectoryPath: paths.buildDirectoryPath
   });
 
@@ -96,7 +129,8 @@ const serve = async projectDirectoryPath => {
 
     try {
       const { inputFilePaths: updatedInputFilePaths } = await rebuild();
-      await Ssr.renderFromBundleInWorkerThread(paths, config, pages);
+
+      await Ssr.renderFromBundleInWorkerThread(ssrOptions);
 
       const createdInputFilePaths = Utility.arrayDiff(
         updatedInputFilePaths,
