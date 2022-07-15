@@ -79,10 +79,13 @@ An example `mesmer.json` file can look roughly as following
     "name": "Mesmer Starter",
     "githubUrl": "https://github.com/hacksparr0w/mesmer"
   },
-  "pages": [
-    "./src/page/*.jsx",
-    "./src/page/post/*.mdx"
-  ]
+  "build": {
+    "baseUrl": "https://github.com/hacksparr0w/mesmer-starter",
+    "pages": [
+      "./src/page/*.jsx",
+      "./src/page/post/*.mdx"
+    ]
+  }
 }
 ```
 
