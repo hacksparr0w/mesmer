@@ -153,7 +153,21 @@ const multibuild = async promises => {
     .filter(isUniqueElement(compareOutputFiles));
 
   await Promise.all(
-    outputFiles.map(({ path, contents }) => Fs.writeFile(path, contents))
+    outputFiles.map(async ({ path, contents }) => {
+      const parentDirectoryPath = Path.dirname(path);
+
+      try {
+        await Fs.stat(parentDirectoryPath);
+      } catch (error) {
+        if (error.code === "ENOENT") {
+          await Fs.mkdir(parentDirectoryPath, { recursive: true });
+        } else {
+          throw error;
+        }
+      }
+
+      return Fs.writeFile(path, contents);
+    })
   );
 
   const inputFilePaths = results
