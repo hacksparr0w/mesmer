@@ -5,7 +5,7 @@ import mdx from "@mdx-js/esbuild";
 import Esbuild from "esbuild";
 
 import * as Codegen from "./codegen.js";
-import { isUniqueElement, joinUrl } from "./utility.js";
+import { extendUrlPath, isUniqueElement } from "./utility.js";
 
 const BUNDLE_PLUGIN_NAME = "mesmer";
 const DEFAULT_LOADERS = {
@@ -53,7 +53,7 @@ const BundlePlugin = options => ({
 
     build.onLoad({ filter: configFilePattern }, async () => {
       let contents;
-      const metadataFileUrl = joinUrl(
+      const metadataFileUrl = extendUrlPath(
         baseUrl,
         Path.relative(buildDirectoryPath, metadataFilePath)
       );

@@ -87,9 +87,7 @@ const serve = async projectDirectoryPath => {
   const paths = createPaths(projectDirectoryPath);
   const config = await Config.readConfigFile(paths.configFilePath);
   const { metadata: projectMetadata } = config;
-  const host = "localhost";
-  const port = 8080;
-  const baseUrl = `http://${host}:${port}/`;
+  const baseUrl = "/"
   const pages = await resolvePages(config.build.pages, projectDirectoryPath);
   const bundleOptions = Bundle.BundleOptions({
     paths,
@@ -115,8 +113,8 @@ const serve = async projectDirectoryPath => {
   );
 
   const server = Http.LiveServer({
-    host,
-    port,
+    host: "localhost",
+    port: 8080,
     rootDirectoryPath: paths.buildDirectoryPath
   });
 

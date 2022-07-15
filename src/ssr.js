@@ -5,7 +5,12 @@ import { Worker } from "node:worker_threads";
 
 import commonPath from "common-path";
 
-import { joinUrl, writeJsonFile, writeTextFile, zip } from "./utility.js";
+import {
+  extendUrlPath,
+  writeJsonFile,
+  writeTextFile,
+  zip
+} from "./utility.js";
 
 const HTML_DOCTYPE = "<!DOCTYPE html>";
 
@@ -78,7 +83,7 @@ const renderFromBundle = async options => {
       `${namePart}.html`
     );
 
-    const documentFileUrl = joinUrl(
+    const documentFileUrl = extendUrlPath(
       baseUrl,
       Path.relative(buildDirectoryPath, documentFilePath)
     );
@@ -121,7 +126,7 @@ const renderFromBundle = async options => {
     };
   });
 
-  const clientBundleFileUrl = joinUrl(
+  const clientBundleFileUrl = extendUrlPath(
     baseUrl,
     Path.relative(buildDirectoryPath, clientBundleFilePath)
   );

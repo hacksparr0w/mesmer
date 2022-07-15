@@ -8,7 +8,13 @@ const hydratePage = async (pageModules, metadataFileUrl) => {
   const result = await fetch(metadataFileUrl);
   const metadata = await result.json();
   const pageMetadata = metadata.pages.find(
-    ({ documentFileUrl }) => new URL(documentFileUrl).pathname === pathname
+    ({ documentFileUrl }) => {
+      if (documentFileUrl.startsWith("/")) {
+        return documentFileUrl === pathname;
+      }
+
+      return new URL(documentFileUrl).pathname === pathname;
+    }
   );
 
   metadata["page"] = pageMetadata;

@@ -45,12 +45,15 @@ const isUniqueElement = compare => (firstElement, firstIndex, array) => {
   return firstIndex === secondIndex;
 };
 
-const joinUrl = (baseUrl, path) => {
-  if (baseUrl === "/") {
+const extendUrlPath = (baseUrl, path) => {
+  if (baseUrl.startsWith("/")) {
     return Path.join(baseUrl, path);
   }
 
-  return new URL(path, baseUrl).href;
+  const url = new URL(baseUrl);
+  url.pathname = Path.join(url.pathname, path);
+
+  return url.toString();
 };
 
 const readTextFile = async (path, encoding = DEFAULT_TEXT_ENCODING) => (
@@ -85,11 +88,11 @@ const zip = (...arrays) => {
 
 export {
   arrayDiff,
+  extendUrlPath,
   glob,
   globAll,
   hash,
   isUniqueElement,
-  joinUrl,
   readTextFile,
   readJsonFile,
   writeJsonFile,
